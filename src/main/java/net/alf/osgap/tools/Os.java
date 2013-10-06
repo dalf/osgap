@@ -37,10 +37,6 @@ public final class Os {
 	
 	public static void editFile(String path) throws IOException, URISyntaxException, InterruptedException, CmdLineReturnException {
 		File file = new File(path);
-		if (file.canExecute()) {
-			throw new IllegalArgumentException(file + " is executable");
-		}
-		
 		if (Desktop.isDesktopSupported()) {
 			Desktop.getDesktop().edit(file);
 		} else {
@@ -49,11 +45,7 @@ public final class Os {
 	}
 
 	public static void openFile(String path) throws IOException, InterruptedException, CmdLineReturnException {
-		File file = new File(path);
-		if (file.canExecute()) {
-			throw new IllegalArgumentException(file + " is executable");
-		}
-		
+		File file = new File(path);		
 		if (Desktop.isDesktopSupported()) {
 			Desktop.getDesktop().open(file);
 		} else {

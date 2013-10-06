@@ -61,6 +61,14 @@ public class Server extends NanoHTTPD implements Configuration {
 		Response response = new Response(status, mimeType, txt);
 		return initResponse(response);
 	}
+	
+	public static Response newResponseOk() {
+		return newResponse(Status.OK, MIME_JSON, "{ status : \"ok\"}");
+	}
+	
+	public static Response newResponseException(Exception exception) {
+		return newResponse(Status.BAD_REQUEST, MIME_JSON, "{ status : \"error\",\n  error: \"" +Json.escape(Os.exceptionToString(exception)) + "\"}");
+	}
 
 	@Override
 	public Response serve(String uri, Method method, Map<String, String> headers, Map<String, String> parms, Map<String, String> files) {
@@ -86,18 +94,18 @@ public class Server extends NanoHTTPD implements Configuration {
 			try {
 				String path = URLDecoder.decode(uri.substring(URI_FILE_OPEN.length()), "UTF-8");
 				Os.openFile(path);
-				response = newResponse(Status.OK, MIME_JSON, "{ status : \"ok\"}");
+				response = newResponseOk();
 			} catch (Exception e) {
-				response = newResponse(Status.BAD_REQUEST, MIME_JSON, "{ status : \"error\",\n  error: \"" +Json.escape(Os.exceptionToString(e)) + "\"}");
+				response = newResponseException(e);
 			}
-		} if (uri.startsWith(URI_FILE_EDIT)) {
-			// ask to open a file or a directory 
+		} else if (uri.startsWith(URI_FILE_EDIT)) {
+			// ask to edit a file
 			try {
 				String path = URLDecoder.decode(uri.substring(URI_FILE_EDIT.length()), "UTF-8");
 				Os.editFile(path);
-				response = newResponse(Status.OK, MIME_JSON, "{ status : \"ok\"}");
+				response = newResponseOk();
 			} catch (Exception e) {
-				response = newResponse(Status.BAD_REQUEST, MIME_JSON, "{ status : \"error\",\n  error: \"" +Json.escape(Os.exceptionToString(e)) + "\"}");
+				response = newResponseException(e);
 			}
 		} else if (uri.startsWith(URI_IE)) {
 			// ask to open with IE
@@ -108,9 +116,9 @@ public class Server extends NanoHTTPD implements Configuration {
 					url = url + "?" + query;
 				}
 				Os.openIE(url);
-				response = newResponse(Status.OK, MIME_JSON, "{ status : \"ok\"}");
+				response = newResponseOk();
 			} catch (Exception e) {
-				response = newResponse(Status.BAD_REQUEST, MIME_JSON, "{ status : \"error\",\n  error: \"" +Json.escape(Os.exceptionToString(e)) + "\"}");
+				response = newResponseException(e);
 			}
 		} else if (uri.equals(URI_CLOSE)) {
 			// ask to end the service
