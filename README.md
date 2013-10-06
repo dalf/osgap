@@ -1,4 +1,7 @@
 osgap
 =====
 
-Give OS function to the browser.
+Give OS functions to the browser.
+
+Open, edit local files.
+Open an url with Internet Explorer. 
