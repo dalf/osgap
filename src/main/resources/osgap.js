@@ -1,16 +1,7 @@
 var osGap = (function (w) {
     'use strict';
 
-    var keyStorage = "osgap.key",
-        localhost = "http://127.0.0.1:12701/",
-        localStorage = w.localStorage || {
-            put: function (k,v) {  },
-            get: function (k) {  }
-        };
-
-    function getKey() {
-        return localStorage.get(keyStorage);
-    }
+    var localhost = "http://127.0.0.1:12701/";
     
     function getXDomainRequest() {
         var xdr = null;
@@ -23,9 +14,9 @@ var osGap = (function (w) {
         return xdr;        
     }
 
-    function callOsGap(path) {
+    function callOsGap(service, path) {
         var
-            url = localhost + getKey() + path,
+            url = localhost + service + "/" + path,
             xmlhttp = getXDomainRequest();
         if (xmlhttp !== null) {
             xmlhttp.open("GET", url, true);
@@ -34,33 +25,17 @@ var osGap = (function (w) {
     }
 
     return {
-        exists : function () {
-            var xmlhttp = new XMLHttpRequest();
-            xmlhttp.timeout = 50;
-            xmlhttp.open("GET", "/", true);
-        },
-    
-        init : function () {
-            var
-                keyHash = "#osgap.key=",
-                hash = w.location.hash,
-                key = "";
-            if (hash.startsWith(keyHash)) {
-                key = hash.substr(keyHash.length());
-                localStorage.put(keyStorage, key);
-            }
-        },
 
         openFile: function (filePath) {
-            callOsGap("file/open/" + filePath);
+            callOsGap("file/open", filePath);
         },
         
         editFile: function (filePath) {
-            callOsGap("file/edit/" + filePath);
+            callOsGap("file/edit", filePath);
         },
 
         openIE: function (url) {
-            callOsGap("ie/" + url);
+            callOsGap("ie", url);
         },
         
         closeServer: function() {
@@ -70,4 +45,3 @@ var osGap = (function (w) {
 
 }(window));
 
-osGap.init();

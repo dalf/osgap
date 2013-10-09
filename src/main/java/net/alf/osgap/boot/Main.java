@@ -2,15 +2,14 @@ package net.alf.osgap.boot;
 
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.util.UUID;
 
 import net.alf.osgap.Configuration;
+import net.alf.osgap.auth.Authorization;
 import net.alf.osgap.server.Server;
 import net.alf.osgap.tools.Os;
 
 public class Main implements Configuration {
 	
-	private static final String KEY = UUID.randomUUID().toString();
 	public static final boolean IS_SERVER_RUNNING = isServerRunning();
 
 	/**
@@ -20,15 +19,15 @@ public class Main implements Configuration {
 	public static void main(String[] args) throws Exception {
 		if (args.length >= 1) {
 			String url = args[0];
-			if (IS_SERVER_RUNNING) {
-				// start the browser
-				Os.openUrl(url);
-			} else {
-				// start the browser
-				Os.openUrl(url + "#osgap.key=" + KEY);
-				// Start the localserver
-				startLocalServer();
-			}
+			// add domain to the trust list
+			Authorization.getInstance().addDomain(url);
+			// start the browser
+			Os.openUrl(url);
+		}
+		
+		if (! IS_SERVER_RUNNING) {
+			// Start the localserver
+			startLocalServer();
 		}
 	}
 
@@ -45,8 +44,7 @@ public class Main implements Configuration {
 	public static void startLocalServer() throws Exception {
 		final String jarPath = Main.class.getProtectionDomain().getCodeSource().getLocation().getPath();
 		final String javaPath = Os.getJavaPath();
-		System.out.println(KEY);
-		String[] cmdLine = new String[] { javaPath, "-Dosgap.port=" + PORT, "-Dosgap.key=" + KEY, "-client", "-Xmx50m", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=10", "-cp", jarPath, Server.class.getName() };
+		String[] cmdLine = new String[] { javaPath, "-Dosgap.port=" + PORT, "-client", "-Xmx50m", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=10", "-cp", jarPath, Server.class.getName() };
 		Runtime.getRuntime().exec(cmdLine);
 	}
 	

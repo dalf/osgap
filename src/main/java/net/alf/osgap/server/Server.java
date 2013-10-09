@@ -2,11 +2,13 @@ package net.alf.osgap.server;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 
 import net.alf.osgap.Configuration;
+import net.alf.osgap.auth.Authorization;
 import net.alf.osgap.server.NanoHTTPD.Response.Status;
 import net.alf.osgap.tools.Json;
 import net.alf.osgap.tools.Os;
@@ -21,17 +23,16 @@ public class Server extends NanoHTTPD implements Configuration {
 	private static final String URI_IE = "/ie/";
 	private static final String URI_CLOSE = "/close";
 	private static final Object URI_JS = "/osgap.js";
-	private static final Object URI_JSMIN = "/osgap-min.js";
+	private static final Object URI_JS_MIN = "/osgap-min.js";
+	private static final Object URI_JS_LOADER = "/osgap-loader.js";
+	private static final Object URI_JS_LOADER_MIN = "/osgap-loader-min.js";
 	
 	private static Semaphore running = new Semaphore(1);
+	private static Authorization AUTHORIZATION = Authorization.getInstance(); 
 	
-	private static String key;
-	private static String keyUri;
 	private static int port;
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
-		key = System.getProperty("osgap.key", "fake");
-		keyUri = '/' + key + '/';
 		port = Integer.parseInt(System.getProperty("osgap.port", "" + PORT));
 		
 		running.acquire();
@@ -73,57 +74,57 @@ public class Server extends NanoHTTPD implements Configuration {
 	@Override
 	public Response serve(String uri, Method method, Map<String, String> headers, Map<String, String> parms, Map<String, String> files) {
 		Response response = null;
-		// javascript : allow by all
+		
+		// check authorization
+		if (! AUTHORIZATION.check(uri, method, headers, parms, files)) {
+			return newResponse(Status.FORBIDDEN, MIME_JSON, "{ status : \"forbidden\"}");
+		}
+		
+		
 		if (uri.equals(URI_JS)) {
 			return newResponse(Status.OK, MIME_JAVASCRIPT, this.getClass().getResourceAsStream("/osgap.js"));
-		}
-		if (uri.equals(URI_JSMIN)) {
+			
+		} else if (uri.equals(URI_JS_MIN)) {
 			return newResponse(Status.OK, MIME_JAVASCRIPT, this.getClass().getResourceAsStream("/osgap-min.js"));
-		}
-		
-		// everything else : check if the key is present as a prefix
-		if (! uri.startsWith(keyUri)) {
-			return newResponse(Status.FORBIDDEN, MIME_PLAINTEXT, "There is no place like 127.0.0.1");
-		} else {
-			uri = '/' + uri.substring(keyUri.length());
-		}
-		
-		// the key is here
-		if (uri.startsWith(URI_FILE_OPEN)) {
+
+		} else if (uri.equals(URI_JS_LOADER)) {
+			return newResponse(Status.OK, MIME_JAVASCRIPT, this.getClass().getResourceAsStream("/osgap-loader.js"));
+			
+		} else if (uri.equals(URI_JS_LOADER_MIN)) {
+			return newResponse(Status.OK, MIME_JAVASCRIPT, this.getClass().getResourceAsStream("/osgap-loader-min.js"));
+			
+		} else if (uri.startsWith(URI_FILE_OPEN)) {
 			// ask to open a file or a directory 
 			try {
-				String path = URLDecoder.decode(uri.substring(URI_FILE_OPEN.length()), "UTF-8");
-				Os.openFile(path);
+				Os.openFile(getOneParameter(URI_FILE_OPEN, uri, parms));
 				response = newResponseOk();
 			} catch (Exception e) {
 				response = newResponseException(e);
 			}
+			
 		} else if (uri.startsWith(URI_FILE_EDIT)) {
 			// ask to edit a file
 			try {
-				String path = URLDecoder.decode(uri.substring(URI_FILE_EDIT.length()), "UTF-8");
-				Os.editFile(path);
+				Os.editFile(getOneParameter(URI_FILE_EDIT, uri, parms));
 				response = newResponseOk();
 			} catch (Exception e) {
 				response = newResponseException(e);
 			}
+			
 		} else if (uri.startsWith(URI_IE)) {
 			// ask to open with IE
 			try {
-				String url = URLDecoder.decode(uri.substring(URI_IE.length()), "UTF-8");
-				String query = parms.get("NanoHttpd.QUERY_STRING");
-				if (query != null) {
-					url = url + "?" + query;
-				}
-				Os.openIE(url);
+				Os.openIE(getOneParameter(URI_IE, uri, parms));
 				response = newResponseOk();
 			} catch (Exception e) {
 				response = newResponseException(e);
 			}
-		} else if (uri.equals(URI_CLOSE)) {
+			
+		} else if (uri.startsWith(URI_CLOSE)) {
 			// ask to end the service
 			running.release();
 			response = newResponse(Status.ACCEPTED, MIME_JSON, "{ status : \"ok\"}");
+			
 		} else {
 			// not recognize : debug information
 			StringBuilder sb = new StringBuilder();
@@ -139,9 +140,29 @@ public class Server extends NanoHTTPD implements Configuration {
 			sb.append("</body>");
 			sb.append("</html>");
 			response = newResponse(Status.BAD_REQUEST, MIME_HTML, sb.toString());
+			
 		}
+		
+		// Add header
+		AUTHORIZATION.postProcess(uri, method, headers, parms, files, response);
+
 		System.gc();
+
 		return response;
+	}
+	
+	protected String getOneParameter(String serviceUri, String uri, Map<String, String> parms) {
+		String result = uri;
+		try {
+			result = URLDecoder.decode(uri.substring(serviceUri.length()), "UTF-8");
+		} catch (UnsupportedEncodingException e1) {
+			// nothing
+		}
+		String query = parms.get("NanoHttpd.QUERY_STRING");
+		if (query != null) {
+			result = result + "?" + query;
+		}
+		return result;
 	}
 
 }
