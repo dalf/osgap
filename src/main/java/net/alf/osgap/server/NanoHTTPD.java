@@ -53,6 +53,12 @@ import java.util.*;
  */
 public abstract class NanoHTTPD {
     /**
+     * Maximum time to wait on Socket.getInputStream().read() (in milliseconds)
+     * This is required as the Keep-Alive HTTP connections would otherwise
+     * block the socket reading thread forever (or as long the browser is open).
+     */
+    public static final int SOCKET_READ_TIMEOUT = 5000;
+    /**
      * Common mime type for dynamic content: plain text
      */
     public static final String MIME_PLAINTEXT = "text/plain";
@@ -67,6 +73,7 @@ public abstract class NanoHTTPD {
     private final String hostname;
     private final int myPort;
     private ServerSocket myServerSocket;
+    private Set<Socket> openConnections = new HashSet<Socket>();
     private Thread myThread;
     /**
      * Pluggable strategy for asynchronously executing requests.
@@ -136,9 +143,12 @@ public abstract class NanoHTTPD {
                 do {
                     try {
                         final Socket finalAccept = myServerSocket.accept();
+                        registerConnection(finalAccept);
+                        finalAccept.setSoTimeout(SOCKET_READ_TIMEOUT);
                         final InputStream inputStream = finalAccept.getInputStream();
                         if (inputStream == null) {
                             safeClose(finalAccept);
+                            unRegisterConnection(finalAccept);
                         } else {
                             asyncRunner.exec(new Runnable() {
                                 @Override
@@ -147,7 +157,7 @@ public abstract class NanoHTTPD {
                                     try {
                                         outputStream = finalAccept.getOutputStream();
                                         TempFileManager tempFileManager = tempFileManagerFactory.create();
-                                        HTTPSession session = new HTTPSession(tempFileManager, inputStream, outputStream);
+                                        HTTPSession session = new HTTPSession(tempFileManager, inputStream, outputStream, finalAccept.getInetAddress());
                                         while (!finalAccept.isClosed()) {
                                             session.execute();
                                         }
@@ -161,6 +171,7 @@ public abstract class NanoHTTPD {
                                         safeClose(outputStream);
                                         safeClose(inputStream);
                                         safeClose(finalAccept);
+                                        unRegisterConnection(finalAccept);
                                     }
                                 }
                             });
@@ -181,12 +192,41 @@ public abstract class NanoHTTPD {
     public void stop() {
         try {
             safeClose(myServerSocket);
+            closeAllConnections();
             myThread.join();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    /**
+     * Registers that a new connection has been set up.
+     *
+     * @param socket
+     *            the {@link Socket} for the connection.
+     */
+    public synchronized void registerConnection(Socket socket) {
+        openConnections.add(socket);
+    }
+
+    /**
+     * Registers that a connection has been closed
+     *
+     * @param socket
+     *            the {@link Socket} for the connection.
+     */
+    public synchronized void unRegisterConnection(Socket socket) {
+        openConnections.remove(socket);
+    }
+
+    /**
+     * Forcibly closes all connections that are open.
+     */
+    public synchronized void closeAllConnections() {
+        for (Socket socket : openConnections) {
+            safeClose(socket);
+        }
+    }
 
     public final int getListeningPort() {
         return myServerSocket == null ? -1 : myServerSocket.getLocalPort();
@@ -332,7 +372,7 @@ public abstract class NanoHTTPD {
      * HTTP Request methods, with the ability to decode a <code>String</code> back to its enum value.
      */
     public enum Method {
-        GET, PUT, POST, DELETE, HEAD;
+        GET, PUT, POST, DELETE, HEAD, OPTIONS;
 
         static Method lookup(String method) {
             for (Method m : Method.values()) {
@@ -664,7 +704,7 @@ public abstract class NanoHTTPD {
         public enum Status {
             OK(200, "OK"), CREATED(201, "Created"), ACCEPTED(202, "Accepted"), NO_CONTENT(204, "No Content"), PARTIAL_CONTENT(206, "Partial Content"), REDIRECT(301,
                 "Moved Permanently"), NOT_MODIFIED(304, "Not Modified"), BAD_REQUEST(400, "Bad Request"), UNAUTHORIZED(401,
-                "Unauthorized"), FORBIDDEN(403, "Forbidden"), NOT_FOUND(404, "Not Found"), RANGE_NOT_SATISFIABLE(416,
+                "Unauthorized"), FORBIDDEN(403, "Forbidden"), NOT_FOUND(404, "Not Found"), METHOD_NOT_ALLOWED(405, "Method Not Allowed"), RANGE_NOT_SATISFIABLE(416,
                 "Requested Range Not Satisfiable"), INTERNAL_ERROR(500, "Internal Server Error");
             private final int requestStatus;
             private final String description;
@@ -684,8 +724,7 @@ public abstract class NanoHTTPD {
         }
     }
 
-    @SuppressWarnings("serial")
-	public static final class ResponseException extends Exception {
+    public static final class ResponseException extends Exception {
 
         private final Response.Status status;
 
@@ -761,6 +800,17 @@ public abstract class NanoHTTPD {
             this.outputStream = outputStream;
         }
 
+        public HTTPSession(TempFileManager tempFileManager, InputStream inputStream, OutputStream outputStream, InetAddress inetAddress) {
+            this.tempFileManager = tempFileManager;
+            this.inputStream = inputStream;
+            this.outputStream = outputStream;
+            String remoteIp = inetAddress.isLoopbackAddress() || inetAddress.isAnyLocalAddress() ? "127.0.0.1" : inetAddress.getHostAddress().toString();
+            headers = new HashMap<String, String>();
+
+            headers.put("remote-addr", remoteIp);
+            headers.put("http-client-ip", remoteIp);
+        }
+
         @Override
         public void execute() throws IOException {
             try {
@@ -793,7 +843,9 @@ public abstract class NanoHTTPD {
                 }
 
                 parms = new HashMap<String, String>();
-                headers = new HashMap<String, String>();
+                if(null == headers) {
+                    headers = new HashMap<String, String>();
+                }
 
                 // Create a BufferedReader for parsing the header.
                 BufferedReader hin = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(buf, 0, rlen)));
@@ -963,7 +1015,7 @@ public abstract class NanoHTTPD {
                     while (line != null && line.trim().length() > 0) {
                         int p = line.indexOf(':');
                         if (p >= 0)
-                            headers.put(line.substring(0, p).trim().toLowerCase(), line.substring(p + 1).trim());
+                            headers.put(line.substring(0, p).trim().toLowerCase(Locale.US), line.substring(p + 1).trim());
                         line = in.readLine();
                     }
                 }
@@ -993,7 +1045,7 @@ public abstract class NanoHTTPD {
                     while (mpline != null && mpline.trim().length() > 0) {
                         int p = mpline.indexOf(':');
                         if (p != -1) {
-                            item.put(mpline.substring(0, p).trim().toLowerCase(), mpline.substring(p + 1).trim());
+                            item.put(mpline.substring(0, p).trim().toLowerCase(Locale.US), mpline.substring(p + 1).trim());
                         }
                         mpline = in.readLine();
                     }
@@ -1008,7 +1060,7 @@ public abstract class NanoHTTPD {
                             String token = st.nextToken();
                             int p = token.indexOf('=');
                             if (p != -1) {
-                                disposition.put(token.substring(0, p).trim().toLowerCase(), token.substring(p + 1).trim());
+                                disposition.put(token.substring(0, p).trim().toLowerCase(Locale.US), token.substring(p + 1).trim());
                             }
                         }
                         String pname = disposition.get("name");

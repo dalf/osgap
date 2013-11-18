@@ -8,7 +8,7 @@ import java.util.Set;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 
-import net.alf.osgap.server.NanoHTTPD.Method;
+import net.alf.osgap.server.NanoHTTPD.IHTTPSession;
 import net.alf.osgap.server.NanoHTTPD.Response;
 
 public class Authorization {
@@ -71,9 +71,9 @@ public class Authorization {
 		return this.domains.contains(key);		
 	}
 
-	public boolean check(String uri, Method method, Map<String, String> headers, Map<String, String> parms, Map<String, String> files) {
+	public boolean check(IHTTPSession session) {
 		try {
-			String origin = headers.get(HTTP_ORIGIN);
+			String origin = session.getHeaders().get(HTTP_ORIGIN);
 			if (origin == null) {
 				return true;
 			}
@@ -92,7 +92,8 @@ public class Authorization {
 		}
 	}
 
-	public void postProcess(String uri, Method method, Map<String, String> headers, Map<String, String> parms, Map<String, String> files, Response response) {
+	public void postProcess(IHTTPSession session, Response response) {
+		Map<String, String> headers = session.getHeaders();
 		String origin = headers.get(HTTP_ORIGIN);
 		if (origin != null) {
 			response.addHeader(HTTP_ACCESS_CONTROL_ALLOW_ORIGIN, origin);

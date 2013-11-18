@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OS Gap</title>
+</head>
+<body>
+    <script src="http://code.jquery.com/jquery-latest.min.js"></script>
+    <script>
+// content of /osgap-loader.js, a minify version is here /osgap-loader-min.js 
+var osGap = (function (w) {
+    'use strict';
+    var
+    onLoadCallbacks = [],
+        tmp = {
+            __url__: "http://127.0.0.1:12701/",
+
+            onLoad: function (callback) {
+                onLoadCallbacks.push(callback);
+            },
+
+            sendXDR: function (url, onsuccesscb, onerrorcb) {
+                var xmlhttp,
+                    status,
+                    safe = function (f) {
+                        return function () {
+                            if ((typeof f) === "function") {
+                                f(xmlhttp);
+                            }
+                        }
+                    },
+                    onsuccesscb_safe = safe(onsuccesscb),
+                    onerrorcb_safe = safe(onerrorcb);
+
+                if (w.XDomainRequest) {
+                    xmlhttp = new XDomainRequest();
+                } else if (w.XMLHttpRequest) {
+                    xmlhttp = new XMLHttpRequest();
+                }
+
+                if (xmlhttp) {
+                    xmlhttp.timeout = 1000;
+                    xmlhttp.onload = function () {
+                        var status = xmlhttp.status;
+                        if (status === undefined || (status >= 200 && status < 300)) {
+                            onsuccesscb_safe();
+                        } else {
+                            onerrorcb_safe();
+                        }
+                    };
+                    xmlhttp.onerror = onerrorcb_safe;
+                    xmlhttp.open("GET", url, true);
+                    xmlhttp.send();
+                }
+            }
+        };
+
+    tmp.sendXDR(tmp.__url__ + "osgap.js", function (response) {
+        eval(response.responseText);
+    });
+
+    return tmp;
+}(window));
+    </script>
+    <script>
+      function clipboardGetExample() {
+        osGap.clipboard.get(function(result) { 
+        	$("#clipboard").text(JSON.stringify(result)) 
+        });
+      }
+      
+      function clipboardSetExample() {
+        osGap.clipboard.setText("I ain't afraid of no ghosts");
+      }
+    </script>
+    <h1>OS gap</h1>
+    <h2>Same examples</h2>
+    <ul>
+        <li><a href="http://www.google.fr?q=test" class="useIE">www.google.fr?q=test</a></li>
+        <li><a href="#" class="osgap-fileopen" data-filepath="C:\\">open C:\</a></li>
+        <li><a href="#" class="osgap-fileedit" data-filepath="C:\\Windows\\win.ini">edit C:\Windows\win.ini</a></li>
+        <li><a href="#" onclick="clipboardGetExample()">Get clipboard content</a></li>
+        <li><a href="#" onclick="clipboardSetExample()">Set clipboard content to "I ain't afraid of no ghosts"</a></li>
+    </ul>
+    
+    <pre id="clipboard"></pre>
+    
+    <script>
+osGap.onLoad(function () {
+    function openIE(event) {
+        osGap.url.openIE($(this).data('iehref'));
+    };
+
+    function fileOpen(event) {
+        osGap.file.open($(this).data('filepath'));
+    }
+
+    function fileEdit(event) {
+        osGap.file.edit($(this).data('filepath'));
+    }
+    
+    if (!navigator.userAgent.match(/msie/i)) {
+        $('.useIE').each(function () {
+            var href = $(this).attr('href');
+            $(this).attr('href', '#');
+            $(this).data('iehref', href);
+            $(this).click(openIE);
+        });
+    }
+
+    $('.osgap-fileopen').each(function () {
+        $(this).click(fileOpen);
+    });
+
+    $('.osgap-fileedit').each(function () {
+        $(this).click(fileEdit);
+    });
+});
+    </script>
+</body>
+
+</html>
